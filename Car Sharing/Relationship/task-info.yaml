@@ -1,0 +1,1988 @@
+type: edu
+files:
+- name: src/carsharing/Main.java
+  visible: true
+  text: |-
+    package carsharing;
+
+    public class Main {
+
+        public static void main(String[] args) {
+            // write your code here
+        }
+    }
+  learner_created: false
+- name: test/DatabaseUtil.java
+  visible: false
+  text: |
+    import org.hyperskill.hstest.exception.outcomes.WrongAnswer;
+
+    import java.sql.*;
+    import java.util.HashMap;
+
+    public class DatabaseUtil {
+
+        private Connection connection = null;
+        private static final String databaseFilePath = "./src/carsharing/db/carsharing";
+
+        public Connection getConnection() {
+            if (connection != null) {
+                return connection;
+            }
+            try {
+                connection = DriverManager.getConnection("jdbc:h2:" + databaseFilePath);
+            } catch (SQLException ignored) {
+                throw new WrongAnswer("Can't connect to the database.");
+            }
+            return connection;
+        }
+
+        public void closeConnection() {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException ignored) {
+                    System.out.println(ignored.getErrorCode());
+                    throw new WrongAnswer("Can't close connection to the database.");
+                }
+                connection = null;
+            }
+        }
+
+        public ResultSet executeQuery(String query) {
+            try {
+                return getConnection().createStatement().executeQuery(query);
+            } catch (SQLException exception) {
+                throw new WrongAnswer("Can't execute query to the database.\n" +
+                        "SQL Message:\n" + exception.getMessage());
+            }
+        }
+
+        public boolean ifTableExist(String tableName) {
+            try {
+                tableName = tableName.toUpperCase();
+                ResultSet resultSet = executeQuery("SHOW TABLES");
+                while (resultSet.next()) {
+                    if (resultSet.getString("TABLE_NAME").equals(tableName)) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (SQLException exception) {
+                throw new WrongAnswer("Can't execute query to the database.\n" +
+                        "SQL Message:\n" + exception.getMessage());
+            }
+        }
+
+        public void ifColumnsExist(String tableName, String[][] columns) {
+            try {
+                ResultSet resultSet = getConnection()
+                        .createStatement()
+                        .executeQuery("SHOW COLUMNS FROM " + tableName.toUpperCase());
+
+                HashMap<String, String> correctColumns = new HashMap<>();
+                for (String[] column : columns) {
+                    correctColumns.put(column[0], column[1]);
+                }
+
+                while (resultSet.next()) {
+                    String columnName = resultSet.getString("FIELD");
+                    if (correctColumns.containsKey(columnName)) {
+                        if (!resultSet.getString("TYPE").contains(correctColumns.get(columnName))) {
+                            throw new WrongAnswer("In the '" + tableName.toUpperCase() + "' table '" + columnName
+                                    + "' column should be of " + correctColumns.get(columnName) + " type.");
+                        }
+                        correctColumns.remove(columnName);
+                    }
+                }
+                if (!correctColumns.isEmpty()) {
+                    throw new WrongAnswer("Can't find in '" + tableName.toUpperCase() + "' table the following columns: " + correctColumns.toString());
+                }
+            } catch (SQLException exception) {
+                throw new WrongAnswer("Can't execute query to the database.\n" +
+                        "SQL Message:\n" + exception.getMessage());
+            }
+        }
+
+        public void clearCompanyTable() {
+            try {
+                getConnection().createStatement().execute("DELETE FROM COMPANY");
+            } catch (SQLException ignored) {
+                throw new WrongAnswer("Can't delete rows from the COMPANY table.");
+            }
+        }
+
+        public void clearCarTable() {
+            try {
+                getConnection().createStatement().execute("DELETE FROM CAR");
+            } catch (SQLException ignored) {
+                throw new WrongAnswer("Can't delete rows from the COMPANY table.");
+            }
+        }
+
+        public void checkCompany(String name) {
+            try {
+                PreparedStatement preparedStatement = getConnection().prepareStatement("SELECT * FROM COMPANY WHERE NAME = ?");
+                preparedStatement.setString(1, name);
+                ResultSet resultSet = preparedStatement.executeQuery();
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Can't find '" + name + "' company in the 'COMPANY' table.");
+                }
+            } catch (SQLException ignored) {
+                throw new WrongAnswer("Can't select data from the 'COMPANY' table!");
+            }
+        }
+
+        public void checkCar(String companyName, String carName) {
+            try {
+                PreparedStatement companyStatement = getConnection().prepareStatement("SELECT * FROM COMPANY WHERE NAME = ?");
+                companyStatement.setString(1, companyName);
+
+                PreparedStatement carStatement = getConnection().prepareStatement("SELECT * FROM CAR WHERE NAME = ?");
+                carStatement.setString(1, carName);
+
+                ResultSet resultSet = companyStatement.executeQuery();
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Can't find '" + companyName + "' company in the 'COMPANY' table.");
+                }
+
+                int id = resultSet.getInt("ID");
+
+                resultSet = carStatement.executeQuery();
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Can't find '" + carName + "' car in the 'CAR' table.");
+                }
+                if (resultSet.getInt("COMPANY_ID") != id) {
+                    throw new WrongAnswer("'COMPANY_ID' of the '" + carName + "' car is wrong. It should reference to the '" + companyName + "' ID.");
+                }
+            } catch (SQLException exception) {
+                throw new WrongAnswer("Can't execute query to the database.\n" +
+                        "SQL Message:\n" + exception.getMessage());
+            }
+        }
+
+        public void checkCompanyColumnProperties() {
+            try {
+                ResultSet resultSet = getConnection().createStatement().executeQuery("SELECT * FROM INFORMATION_SCHEMA.CONSTRAINTS" +
+                        " WHERE COLUMN_LIST = 'ID' AND TABLE_NAME = 'COMPANY' AND CONSTRAINT_TYPE = 'PRIMARY KEY'");
+
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Looks like 'ID' column in 'COMPANY' table doesn't have PRIMARY KEY constraint.");
+                }
+
+                resultSet = getConnection().createStatement().executeQuery("SELECT * FROM INFORMATION_SCHEMA.CONSTRAINTS" +
+                        " WHERE COLUMN_LIST = 'NAME' AND TABLE_NAME = 'COMPANY' AND CONSTRAINT_TYPE = 'UNIQUE'");
+
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Looks like 'NAME' column in 'COMPANY' table doesn't have UNIQUE constraint.");
+                }
+
+                resultSet = getConnection().createStatement().executeQuery("SELECT  * FROM INFORMATION_SCHEMA.COLUMNS" +
+                        " WHERE COLUMN_NAME = 'NAME' AND TABLE_NAME = 'COMPANY' AND IS_NULLABLE = 'NO'");
+
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Looks like 'NAME' column in 'COMPANY' table doesn't have NOT NULL constraint.");
+                }
+            } catch (SQLException exception) {
+                throw new WrongAnswer("Can't execute query to the database.\n" +
+                        "SQL Message:\n" + exception.getMessage());
+            }
+        }
+
+        public void checkCarColumnProperties() {
+            try {
+                ResultSet resultSet = getConnection().createStatement().executeQuery("SELECT * FROM INFORMATION_SCHEMA.CONSTRAINTS" +
+                        " WHERE COLUMN_LIST = 'ID' AND TABLE_NAME = 'CAR' AND CONSTRAINT_TYPE = 'PRIMARY KEY'");
+
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Looks like 'ID' column in 'CAR' table doesn't have PRIMARY KEY constraint.");
+                }
+
+                resultSet = getConnection().createStatement().executeQuery("SELECT * FROM INFORMATION_SCHEMA.COLUMNS" +
+                        " WHERE COLUMN_NAME = 'NAME' AND TABLE_NAME = 'CAR' AND IS_NULLABLE = 'NO'");
+
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Looks like 'NAME' column in 'CAR' table doesn't have NOT NULL constraint.");
+                }
+
+                resultSet = getConnection().createStatement().executeQuery("SELECT * FROM INFORMATION_SCHEMA.COLUMNS" +
+                        " WHERE COLUMN_NAME = 'COMPANY_ID' AND TABLE_NAME = 'CAR' AND IS_NULLABLE = 'NO'");
+
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Looks like 'COMPANY_ID' column in 'CAR' table doesn't have NOT NULL constraint.");
+                }
+
+                resultSet = getConnection().createStatement().executeQuery("SELECT  * FROM INFORMATION_SCHEMA.CONSTRAINTS" +
+                        " WHERE COLUMN_LIST = 'COMPANY_ID' AND TABLE_NAME = 'CAR' AND CONSTRAINT_TYPE = 'REFERENTIAL'");
+
+                if (!resultSet.next()) {
+                    throw new WrongAnswer("Looks like 'COMPANY_ID' column in 'CAR' table is not FOREIGN KEY. It should refer to 'ID' column of the 'COMPANY' table.");
+                }
+
+                if (!resultSet.getString("SQL").replace("\"", "").contains("COMPANY(ID)")) {
+                    throw new WrongAnswer("Looks like 'COMPANY_ID' column in 'CAR' table doesn't refer to 'ID' column of the 'COMPANY' table.");
+                }
+            } catch (SQLException exception) {
+                throw new WrongAnswer("Can't execute query to the database.\n" +
+                        "SQL Message:\n" + exception.getMessage());
+            }
+        }
+    }
+  learner_created: false
+- name: test/CarSharingTest.java
+  visible: false
+  text: |
+    import org.hyperskill.hstest.dynamic.DynamicTest;
+    import org.hyperskill.hstest.exception.outcomes.WrongAnswer;
+    import org.hyperskill.hstest.stage.StageTest;
+    import org.hyperskill.hstest.testcase.CheckResult;
+    import org.hyperskill.hstest.testing.TestedProgram;
+    import org.junit.BeforeClass;
+
+    import java.io.File;
+
+    public class CarSharingTest extends StageTest<Void> {
+
+        private static final String databaseFileName = "src/carsharing/db/carsharing.mv.db";
+        private static DatabaseUtil db = new DatabaseUtil();
+
+        @BeforeClass
+        public static void deleteDatabaseFile() {
+            File file = new File(databaseFileName);
+
+            if (!file.exists()) {
+                return;
+            }
+
+            if (!file.delete()) {
+                throw new WrongAnswer("Can't delete database file before starting your program.\n" +
+                    "Make sure you close all the connections with the database file!");
+            }
+        }
+
+        @DynamicTest(order = -1)
+        public CheckResult test2_ifDatabaseExist() {
+
+            TestedProgram program = new TestedProgram();
+            program.start("-databaseFileName", "carsharing");
+            program.execute("0");
+
+            if (!program.isFinished()) {
+                return CheckResult.wrong("After choosing 'Exit' item your program should stop.");
+            }
+
+            File file = new File(databaseFileName);
+
+            if (!file.exists()) {
+                return CheckResult.wrong("Can't find a database file. It should be named 'carsharing.mv.db'" +
+                    " and located in /carsharing/db/ folder.\n" +
+                    "The file should be created right after starting the program!");
+            }
+
+            return correct();
+        }
+
+        @DynamicTest
+        public CheckResult test1_testMenu() {
+            TestedProgram program = new TestedProgram();
+            String output = program.start("-databaseFileName", "carsharing");
+
+            if (!output.contains("1. Log in as a manager")) {
+                return CheckResult.wrong("Start menu should contain \"1. Log in as a manager\"");
+            }
+
+            if (!output.contains("0. Exit")) {
+                return CheckResult.wrong("Start menu should contain \"0. Exit\"");
+            }
+
+            output = program.execute("1");
+
+            if (!output.contains("1. Company list")) {
+                return CheckResult.wrong("After choosing 'Log in as a manager' item you should print menu that contains '1. Company list' item");
+            }
+
+            if (!output.contains("2. Create a company")) {
+                return CheckResult.wrong("After choosing 'Log in as a manager' item you should print menu that contains '2. Create a company' item");
+            }
+
+            if (!output.contains("0. Back")) {
+                return CheckResult.wrong("After choosing 'Log in as a manager' item you should print menu that contains '0. Back' item");
+            }
+
+            output = program.execute("0");
+
+            if (!output.contains("1. Log in as a manager")) {
+                return CheckResult.wrong("After choosing '0. Back' item you should print previous menu and it should contain \"1. Log in as a manager\"");
+            }
+
+            if (!output.contains("0. Exit")) {
+                return CheckResult.wrong("After choosing '0. Back' item you should print previous menu and it should contain \"0. Exit\"");
+            }
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest
+        public CheckResult test3_checkDatabaseConnection() {
+            db.getConnection();
+            return correct();
+        }
+
+        @DynamicTest
+        public CheckResult test4_checkIfTableExists() {
+            if (!db.ifTableExist("company")) {
+                return wrong("Can't find table named 'company'");
+            }
+            if (!db.ifTableExist("car")) {
+                return wrong("Can't find table named 'car'");
+            }
+            return correct();
+        }
+
+        @DynamicTest
+        public CheckResult test5_checkTableColumns() {
+            String[][] companyColumns = {{"ID", "INT"}, {"NAME", "VARCHAR"}};
+            db.ifColumnsExist("company", companyColumns);
+            db.checkCompanyColumnProperties();
+
+            String[][] carColumns = {{"ID", "INT"}, {"NAME", "VARCHAR"}, {"COMPANY_ID", "INT"}};
+            db.ifColumnsExist("car", carColumns);
+            db.checkCarColumnProperties();
+            return correct();
+        }
+
+        @DynamicTest
+        public CheckResult test6_testAddCompany() {
+
+            TestedProgram program = new TestedProgram();
+            program.start("-databaseFileName", "carsharing");
+
+            db.clearCarTable();
+            db.clearCompanyTable();
+
+            program.execute("1");
+            String output = program.execute("1");
+
+            if (!output.contains("The company list is empty")) {
+                return wrong("If no company has been created you should print 'The company list is empty' when '1. Company list' item is chosen");
+            }
+
+            output = program.execute("2");
+
+            if (!output.contains("Enter the company name")) {
+                return wrong("After choosing '2. Create a company' item you should ask to enter a company name.\n" +
+                    "Your output should contain 'Enter the company name:'");
+            }
+
+            program.execute("Super company");
+            output = program.execute("1");
+
+            if (!output.contains("1. Super company")) {
+                return wrong("In the company list expected one company.\n" +
+                    "Your output should contain '1. Super company'");
+            }
+
+            db.checkCompany("Super company");
+
+            program.execute("0\n2\nAnother company");
+            program.execute("2\nOne more company");
+
+            db.checkCompany("Another company");
+            db.checkCompany("One more company");
+
+            output = program.execute("1");
+
+            if (!output.contains("1. Super company")) {
+                return wrong("In the company list expected one company.\n" +
+                    "Your output should contain '1. Super company'.\n" +
+                    "Companies should be sorted by 'ID' column");
+            }
+
+            if (!output.contains("2. Another company")) {
+                return wrong("In the company list expected one company.\n" +
+                    "Your output should contain '2. Another company'.\n" +
+                    "Companies should be sorted by 'ID' column");
+            }
+
+            if (!output.contains("3. One more company")) {
+                return wrong("In the company list expected one company.\n" +
+                    "Your output should contain '2. Another company'.\n" +
+                    "Companies should be sorted by 'ID' column");
+            }
+
+            if (!output.contains("0. Back")) {
+                return wrong("There is no back option in the company list.\n" +
+                    "Your output should contain '0. Back'");
+            }
+
+            program.execute("2");
+
+            return correct();
+        }
+
+        @DynamicTest
+        public CheckResult test7_testAddCar() {
+
+            TestedProgram program = new TestedProgram();
+            program.start("-databaseFileName", "carsharing");
+            String output;
+
+            db.clearCarTable();
+            db.clearCompanyTable();
+
+            program.execute("1");
+            program.execute("2");
+            program.execute("Car To Go");
+            program.execute("2");
+            program.execute("Drive Now");
+
+            db.checkCompany("Car To Go");
+            db.checkCompany("Drive Now");
+
+            output = program.execute("1");
+
+            if (!output.contains("1. Car To Go")) {
+                return wrong("In the company list expected one company.\n" +
+                    "Your output should contain '1. Car To Go'.\n" +
+                    "Companies should be sorted by 'ID' column");
+            }
+
+            if (!output.contains("2. Drive Now")) {
+                return wrong("In the company list expected one company.\n" +
+                    "Your output should contain '2. Drive Now'\n" +
+                    "Companies should be sorted by 'ID' column");
+            }
+
+            if (!output.contains("0. Back")) {
+                return wrong("There is no back option in the company list.\n" +
+                    "Your output should contain '0. Back'");
+            }
+
+            output = program.execute("1");
+
+            if (!output.contains("1. Car list")) {
+                return wrong("After choosing company you should print menu that contains '1. Car list' item");
+            }
+
+            if (!output.contains("2. Create a car")) {
+                return wrong("After choosing company you should print menu that contains '2. Create a car' item");
+            }
+
+            if (!output.contains("0. Back")) {
+                return wrong("After choosing company you should print menu that contains '0. Back' item");
+            }
+
+            output = program.execute("1");
+
+            if (!output.contains("The car list is empty!")) {
+                return wrong("If no cars were added to the company you should print 'The car list is empty!'");
+            }
+
+            output = program.execute("2");
+
+            if (!output.contains("Enter the car name:")) {
+                return wrong("After choosing 'Create a car' item you should ask to enter a car name. " +
+                    "Your output should contain 'Enter the car name:'");
+            }
+
+            program.execute("Hyundai Venue");
+            db.checkCar("Car To Go", "Hyundai Venue");
+
+            program.execute("2");
+            program.execute("Maruti Suzuki Dzire");
+            db.checkCar("Car To Go", "Maruti Suzuki Dzire");
+
+            output = program.execute("1");
+
+            if (!output.contains("1. Hyundai Venue")) {
+                return wrong("In the car list expected 'Hyundai Venue' car.\n" +
+                    "Your output should contain '1. Hyundai Venue'\n" +
+                    "Cars should be sorted by 'ID' column");
+            }
+
+            if (!output.contains("2. Maruti Suzuki Dzire")) {
+                return wrong("In the car list expected 'Maruti Suzuki Dzire' car.\n" +
+                    "Your output should contain '2. Maruti Suzuki Dzire'\n" +
+                    "Cars should be sorted by 'ID' column");
+            }
+
+            program.execute("0");
+
+            program.execute("1");
+            program.execute("2");
+
+            output = program.execute("1");
+
+            if (!output.contains("The car list is empty!")) {
+                return wrong("If no cars were added to the company you should print 'The car list is empty!'");
+            }
+
+            program.execute("2");
+            program.execute("Lamborghini Urraco");
+
+            output = program.execute("1");
+
+            if (!output.contains("1. Lamborghini Urraco")) {
+                return wrong("In the car list expected 'Lamborghini Urraco' car.\n" +
+                    "Your output should contain '1. Lamborghini Urraco'");
+            }
+
+            if (output.contains("Hyundai Venue")) {
+                return wrong("Your output contains 'Hyundai Venue'. This car is from another company");
+            }
+
+            if (output.contains("Maruti Suzuki Dzire")) {
+                return wrong("Your output contains 'Maruti Suzuki Dzire'. This car is from another company");
+            }
+
+            db.checkCar("Drive Now", "Lamborghini Urraco");
+
+            program.execute("0");
+            program.execute("0");
+            program.execute("0");
+
+            return correct();
+        }
+
+        private CheckResult wrong(String message) {
+            db.closeConnection();
+            return CheckResult.wrong(message);
+        }
+
+        private CheckResult correct() {
+            db.closeConnection();
+            return CheckResult.correct();
+        }
+    }
+  learner_created: false
+- name: src/carsharing/db/carsharing.mv.db
+  visible: true
+  text: "H:2,block:8,blockSize:1000,chunk:19,clean:1,created:17fc174ed04,format:1,version:19,fletcher:f1d5cf26\n\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0H:2,block:8,blockSize:1000,chunk:19,clean:1,created:17fc174ed04,format:1,version:19,fletcher:f1d5cf26\n\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0chunk:13,block:2,len:1,map:1a,max:700,next:3,pages:2,root:4c0000112d2,time:92,version:13,pinCount:0\
+    \                                                                            \
+    \       \n\0\0\x03�\x030\x03\b\01234567\x05\b\0\x11\x04! &XSET CREATE_BUILD 200\x11\
+    \x04\" \"\n2CREATE USER IF NOT EXISTS \"\" SALT '' HASH '' ADMIN\x11\x04# #\n\
+    mCREATE SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_DF983AE3_526A_412B_85FD_1AC53C73B00C\"\
+    \ START WITH 1 BELONGS_TO_TABLE\x11\x04$ !\nGCREATE PRIMARY KEY \"PUBLIC\".\"\
+    PRIMARY_KEY_6\" ON \"PUBLIC\".\"COMPANY\"(\"ID\")\x11\x04%  \n�\x02CREATE CACHED\
+    \ TABLE \"PUBLIC\".\"COMPANY\"(\n    \"ID\" INT DEFAULT NEXT VALUE FOR \"PUBLIC\"\
+    .\"SYSTEM_SEQUENCE_DF983AE3_526A_412B_85FD_1AC53C73B00C\" NOT NULL NULL_TO_DEFAULT\
+    \ SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_DF983AE3_526A_412B_85FD_1AC53C73B00C\"\
+    ,\n    \"NAME\" VARCHAR(255) NOT NULL\n)\x11\x04& %\nvALTER TABLE \"PUBLIC\".\"\
+    COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_6\" PRIMARY KEY(\"ID\") INDEX\
+    \ \"PUBLIC\".\"PRIMARY_KEY_6\"\x11\x04' !\nOCREATE UNIQUE INDEX \"PUBLIC\".\"\
+    CONSTRAINT_INDEX_6\" ON \"PUBLIC\".\"COMPANY\"(\"NAME\")\x11\x04( %\nyALTER TABLE\
+    \ \"PUBLIC\".\"COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_63\" UNIQUE(\"\
+    NAME\") INDEX \"PUBLIC\".\"CONSTRAINT_INDEX_6\"\0\0\x02�\x06�\0\x13\0\bchunk.11\b\
+    chunk.12\x05map.1\x06map.16\x06map.17\x06map.1a\x05map.3\x05map.4\x05map.5\x05\
+    map.6\fname.index.7\fname.lobData\vname.lobMap\vname.lobRef\x15name.openTransactions\f\
+    name.table.0\fname.table.5\x0ename.undoLog.1\x06root.3�\x01chunk:11,block:4,len:1,liveMax:0,livePages:0,map:19,max:800,next:6,pages:2,root:440000112d4,time:92,unused:92,unusedAtVersion:12,version:11,pinCount:0�\
+    \x01chunk:12,block:6,len:1,liveMax:0,livePages:0,map:1a,max:400,next:7,pages:1,root:48000002dd4,time:92,unused:92,unusedAtVersion:12,version:12,pinCount:0\x15\
+    name:openTransactions\x1cname:table.5,createVersion:4\x1cname:index.7,createVersion:4\x1f\
+    name:undoLog.1,createVersion:11\fname:table.0\vname:lobMap\vname:lobRef\fname:lobData\x02\
+    17\x016\x014\x015\x011\x013\x0216\x021a\v4c000002dd4\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0chunk:13,block:2,version:13,fletcher:92118da5\
+    \                                                                            \
+    \      \nchunk:15,block:3,len:1,map:1a,max:300,next:4,pages:1,root:54000002dd2,time:a2,version:15,pinCount:0\
+    \                                                                            \
+    \       \n\0\0\x02�\x02\n\0\x13\0\bchunk.13\bchunk.14\x05map.1\x06map.16\x06map.17\x06\
+    map.1a\x05map.3\x05map.4\x05map.5\x05map.6\fname.index.7\fname.lobData\vname.lobMap\v\
+    name.lobRef\x15name.openTransactions\fname.table.0\fname.table.5\x0ename.undoLog.1\x06\
+    root.3�\x01chunk:13,block:2,len:1,liveMax:400,livePages:1,map:1a,max:700,next:3,pages:2,root:4c0000112d2,time:92,unusedAtVersion:13,version:13,pinCount:0�\
+    \x01chunk:14,block:5,len:1,liveMax:0,livePages:0,map:1a,max:400,pages:1,root:50000002dd4,time:92,unused:a2,unusedAtVersion:14,version:14,pinCount:0\x15\
+    name:openTransactions\x1cname:table.5,createVersion:4\x1cname:index.7,createVersion:4\x1f\
+    name:undoLog.1,createVersion:11\fname:table.0\vname:lobMap\vname:lobRef\fname:lobData\x02\
+    17\x016\x014\x015\x011\x013\x0216\x021a\v4c000002dd4ateVersion:4\x1cname:index.7,createVersion:4\x1f\
+    name:undoLog.1,createVersion:11\fname:table.0\vname:lobMap\vname:lobRef\fname:lobData\x02\
+    17\x016\x014\x015\x011\x013\x0216\x021a\v4c000002dd4e.5,createVersion:4\x1cname:index.7,createVersion:4\x1f\
+    name:undoLog.1,createVersion:11\fname:table.0\vname:lobMap\vname:lobRef\fname:lobData\x02\
+    17\x016\x014\x015\x011\x013\x0216\x021a\v44000002dd4\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0chunk:15,block:3,version:15,fletcher:942e8fa8                \
+    \                                                                  \nchunk:16,block:4,len:1,map:1a,max:800,next:6,pages:2,root:580000112d4,time:a2,version:16,pinCount:0\
+    \                                                                            \
+    \       \n\0\0\x03�\x035\x03\b\01234567\x05\b\0\x11\x04! &XSET CREATE_BUILD 200\x11\
+    \x04\" \"\n2CREATE USER IF NOT EXISTS \"\" SALT '' HASH '' ADMIN\x11\x04# #\n\
+    mCREATE SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_DF983AE3_526A_412B_85FD_1AC53C73B00C\"\
+    \ START WITH 1 BELONGS_TO_TABLE\x11\x04$ !\nGCREATE PRIMARY KEY \"PUBLIC\".\"\
+    PRIMARY_KEY_6\" ON \"PUBLIC\".\"COMPANY\"(\"ID\")\x11\x04%  \n�\x02CREATE CACHED\
+    \ TABLE \"PUBLIC\".\"COMPANY\"(\n    \"ID\" INT DEFAULT NEXT VALUE FOR \"PUBLIC\"\
+    .\"SYSTEM_SEQUENCE_DF983AE3_526A_412B_85FD_1AC53C73B00C\" NOT NULL NULL_TO_DEFAULT\
+    \ SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_DF983AE3_526A_412B_85FD_1AC53C73B00C\"\
+    ,\n    \"NAME\" VARCHAR(255) NOT NULL\n)\x11\x04& %\nvALTER TABLE \"PUBLIC\".\"\
+    COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_6\" PRIMARY KEY(\"ID\") INDEX\
+    \ \"PUBLIC\".\"PRIMARY_KEY_6\"\x11\x04' !\nOCREATE UNIQUE INDEX \"PUBLIC\".\"\
+    CONSTRAINT_INDEX_6\" ON \"PUBLIC\".\"COMPANY\"(\"NAME\")\x11\x04( %\nyALTER TABLE\
+    \ \"PUBLIC\".\"COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_63\" UNIQUE(\"\
+    NAME\") INDEX \"PUBLIC\".\"CONSTRAINT_INDEX_6\"\0\0\x03Q\a\f\0\x14\0\bchunk.13\b\
+    chunk.14\bchunk.15\x05map.1\x06map.16\x06map.17\x06map.1a\x05map.3\x05map.4\x05\
+    map.5\x05map.6\fname.index.7\fname.lobData\vname.lobMap\vname.lobRef\x15name.openTransactions\f\
+    name.table.0\fname.table.5\x0ename.undoLog.1\x06root.3�\x01chunk:13,block:2,len:1,liveMax:0,livePages:0,map:1a,max:700,next:3,pages:2,root:4c0000112d2,time:92,unused:a2,unusedAtVersion:15,version:13,pinCount:0�\
+    \x01chunk:14,block:5,len:1,liveMax:0,livePages:0,map:1a,max:400,pages:1,root:50000002dd4,time:92,unused:a2,unusedAtVersion:14,version:14,pinCount:0�\
+    \x01chunk:15,block:3,len:1,liveMax:0,livePages:0,map:1a,max:300,next:4,pages:1,root:54000002dd2,time:a2,unused:a2,unusedAtVersion:15,version:15,pinCount:0\x15\
+    name:openTransactions\x1cname:table.5,createVersion:4\x1cname:index.7,createVersion:4\x1f\
+    name:undoLog.1,createVersion:11\fname:table.0\vname:lobMap\vname:lobRef\fname:lobData\x02\
+    17\x016\x014\x015\x011\x013\x0216\x021a\v58000002dd4\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0chunk:16,block:4,version:16,fletcher:954090aa\
+    \                                                                            \
+    \      \nchunk:14,block:5,len:1,map:1a,max:400,pages:1,root:50000002dd4,time:92,version:14,pinCount:0\
+    \                                                                            \
+    \              \n\0\0\x03B\x03�\0\x14\0\bchunk.11\bchunk.12\bchunk.13\x05map.1\x06\
+    map.16\x06map.17\x06map.1a\x05map.3\x05map.4\x05map.5\x05map.6\fname.index.7\f\
+    name.lobData\vname.lobMap\vname.lobRef\x15name.openTransactions\fname.table.0\f\
+    name.table.5\x0ename.undoLog.1\x06root.3�\x01chunk:11,block:3,len:1,liveMax:0,livePages:0,map:19,max:800,pages:2,root:440000112d4,time:92,unused:92,unusedAtVersion:12,version:11,pinCount:0�\
+    \x01chunk:12,block:7,len:1,liveMax:0,livePages:0,map:1a,max:400,pages:1,root:48000002dd4,time:92,unused:92,unusedAtVersion:12,version:12,pinCount:0�\
+    \x01chunk:13,block:2,len:1,liveMax:400,livePages:1,map:1a,max:700,next:3,pages:2,root:4c0000112d2,time:92,unusedAtVersion:13,version:13,pinCount:0\x15\
+    name:openTransactions\x1cname:table.5,createVersion:4\x1cname:index.7,createVersion:4\x1f\
+    name:undoLog.1,createVersion:11\fname:table.0\vname:lobMap\vname:lobRef\fname:lobData\x02\
+    17\x016\x014\x015\x011\x013\x0216\x021a\v4c000002dd4e.5,createVersion:4\x1cname:index.7,createVersion:4\x1f\
+    name:undoLog.1,createVersion:11\fname:table.0\vname:lobMap\vname:lobRef\fname:lobData\x02\
+    17\x016\x014\x015\x011\x013\x0216\x021a\v44000002dd4\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0chunk:14,block:5,version:14,fletcher:93318ea9                \
+    \                                                                  \nchunk:17,block:6,len:1,map:1c,max:4c0,next:7,pages:2,root:5c000005b54,time:a2,version:17,pinCount:0\
+    \                                                                            \
+    \       \n\0\0\0�\0\x16\x03\x03\0123\0\x11\x04! &XSET CREATE_BUILD 200\x11\x04\
+    \" \"\n2CREATE USER IF NOT EXISTS \"\" SALT '' HASH '' ADMIN\x11\x04#  \nOCREATE\
+    \ CACHED TABLE \"PUBLIC\".\"COMPANY\"(\n    \"ID\" INT,\n    \"NAME\" VARCHAR(255)\n\
+    )\0\0\x03�\x02�\0\x13\0\bchunk.13\bchunk.14\bchunk.15\bchunk.16\x05map.1\x06map.1b\x06\
+    map.1c\x05map.3\x05map.4\x05map.5\x05map.6\fname.lobData\vname.lobMap\vname.lobRef\x15\
+    name.openTransactions\fname.table.0\fname.table.3\x0ename.undoLog.1\x06root.3�\
+    \x01chunk:13,block:2,len:1,liveMax:0,livePages:0,map:1a,max:700,next:3,pages:2,root:4c0000112d2,time:92,unused:a2,unusedAtVersion:15,version:13,pinCount:0�\
+    \x01chunk:14,block:5,len:1,liveMax:0,livePages:0,map:1a,max:400,pages:1,root:50000002dd4,time:92,unused:a2,unusedAtVersion:14,version:14,pinCount:0�\
+    \x01chunk:15,block:3,len:1,liveMax:0,livePages:0,map:1a,max:300,next:4,pages:1,root:54000002dd2,time:a2,unused:a2,unusedAtVersion:15,version:15,pinCount:0�\
+    \x01chunk:16,block:4,len:1,liveMax:0,livePages:0,map:1a,max:800,next:6,pages:2,root:580000112d4,time:a2,unused:a2,unusedAtVersion:16,version:16,pinCount:0\x15\
+    name:openTransactions\x1fname:undoLog.1,createVersion:16\x1dname:table.3,createVersion:16\f\
+    name:table.0\vname:lobMap\vname:lobRef\fname:lobData\x016\x014\x015\x011\x013\x02\
+    1c\x021b\v5c000002dca\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0chunk:17,block:6,version:17,fletcher:965991ad                            \
+    \                                                      \nchunk:18,block:7,len:1,map:23,max:a00,next:8,pages:2,root:600000112d6,time:b2,version:18,pinCount:0\
+    \                                                                            \
+    \       \n\0\0\x03�\x03;\x03\b\01234567\x05\b\0\x11\x04! &XSET CREATE_BUILD 200\x11\
+    \x04\" \"\n2CREATE USER IF NOT EXISTS \"\" SALT '' HASH '' ADMIN\x11\x04# #\n\
+    mCREATE SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_2B4BEF9C_9836_4BF0_B781_FC5E850EE9CB\"\
+    \ START WITH 1 BELONGS_TO_TABLE\x11\x04$ !\nGCREATE PRIMARY KEY \"PUBLIC\".\"\
+    PRIMARY_KEY_6\" ON \"PUBLIC\".\"COMPANY\"(\"ID\")\x11\x04%  \n�\x02CREATE CACHED\
+    \ TABLE \"PUBLIC\".\"COMPANY\"(\n    \"ID\" INT DEFAULT NEXT VALUE FOR \"PUBLIC\"\
+    .\"SYSTEM_SEQUENCE_2B4BEF9C_9836_4BF0_B781_FC5E850EE9CB\" NOT NULL NULL_TO_DEFAULT\
+    \ SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_2B4BEF9C_9836_4BF0_B781_FC5E850EE9CB\"\
+    ,\n    \"NAME\" VARCHAR(255) NOT NULL\n)\x11\x04& %\nvALTER TABLE \"PUBLIC\".\"\
+    COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_6\" PRIMARY KEY(\"ID\") INDEX\
+    \ \"PUBLIC\".\"PRIMARY_KEY_6\"\x11\x04' !\nOCREATE UNIQUE INDEX \"PUBLIC\".\"\
+    CONSTRAINT_INDEX_6\" ON \"PUBLIC\".\"COMPANY\"(\"NAME\")\x11\x04( %\nyALTER TABLE\
+    \ \"PUBLIC\".\"COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_63\" UNIQUE(\"\
+    NAME\") INDEX \"PUBLIC\".\"CONSTRAINT_INDEX_6\"\0\0\x04�\0�\0\x18\0\bchunk.13\b\
+    chunk.14\bchunk.15\bchunk.16\bchunk.17\x05map.1\x06map.1d\x06map.1e\x06map.22\x06\
+    map.23\x05map.3\x05map.4\x05map.5\x05map.6\fname.index.7\fname.lobData\vname.lobMap\v\
+    name.lobRef\x15name.openTransactions\fname.table.0\fname.table.5\x0ename.undoLog.1\x0e\
+    name.undoLog.2\x06root.3�\x01chunk:13,block:2,len:1,liveMax:0,livePages:0,map:1a,max:700,next:3,pages:2,root:4c0000112d2,time:92,unused:a2,unusedAtVersion:15,version:13,pinCount:0�\
+    \x01chunk:14,block:5,len:1,liveMax:0,livePages:0,map:1a,max:400,pages:1,root:50000002dd4,time:92,unused:a2,unusedAtVersion:14,version:14,pinCount:0�\
+    \x01chunk:15,block:3,len:1,liveMax:0,livePages:0,map:1a,max:300,next:4,pages:1,root:54000002dd2,time:a2,unused:a2,unusedAtVersion:15,version:15,pinCount:0�\
+    \x01chunk:16,block:4,len:1,liveMax:0,livePages:0,map:1a,max:800,next:6,pages:2,root:580000112d4,time:a2,unused:a2,unusedAtVersion:16,version:16,pinCount:0�\
+    \x01chunk:17,block:6,len:1,liveMax:0,livePages:0,map:1c,max:4c0,next:7,pages:2,root:5c000005b54,time:a2,unused:b2,unusedAtVersion:17,version:17,pinCount:0\x15\
+    name:openTransactions\x1fname:undoLog.1,createVersion:17\x1fname:undoLog.2,createVersion:17\x1d\
+    name:table.5,createVersion:17\x1dname:index.7,createVersion:17\fname:table.0\v\
+    name:lobMap\vname:lobRef\fname:lobData\x0223\x016\x014\x015\x011\x013\x0222\x02\
+    1d\x021e\v60000002dd4\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0chunk:18,block:7,version:18,fletcher:976b92af          \
+    \                                                                        \nchunk:19,block:8,len:1,map:25,max:ac0,next:9,pages:4,root:64000013596,time:199,version:19,pinCount:0\
+    \                                                                            \
+    \       \n\0\0\0E\0�\"\x03\0123\0\x11\x02!QSuper company\x11\x02\"SAnother company\x11\
+    \x02#TOne more company\0\0\x03�\x03p\x03\b\01234567\x05\b\0\x11\x04! &XSET CREATE_BUILD\
+    \ 200\x11\x04\" \"\n2CREATE USER IF NOT EXISTS \"\" SALT '' HASH '' ADMIN\x11\x04\
+    # #\nmCREATE SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_2B4BEF9C_9836_4BF0_B781_FC5E850EE9CB\"\
+    \ START WITH 4 BELONGS_TO_TABLE\x11\x04$ !\nGCREATE PRIMARY KEY \"PUBLIC\".\"\
+    PRIMARY_KEY_6\" ON \"PUBLIC\".\"COMPANY\"(\"ID\")\x11\x04%  \n�\x02CREATE CACHED\
+    \ TABLE \"PUBLIC\".\"COMPANY\"(\n    \"ID\" INT DEFAULT NEXT VALUE FOR \"PUBLIC\"\
+    .\"SYSTEM_SEQUENCE_2B4BEF9C_9836_4BF0_B781_FC5E850EE9CB\" NOT NULL NULL_TO_DEFAULT\
+    \ SEQUENCE \"PUBLIC\".\"SYSTEM_SEQUENCE_2B4BEF9C_9836_4BF0_B781_FC5E850EE9CB\"\
+    ,\n    \"NAME\" VARCHAR(255) NOT NULL\n)\x11\x04& %\nvALTER TABLE \"PUBLIC\".\"\
+    COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_6\" PRIMARY KEY(\"ID\") INDEX\
+    \ \"PUBLIC\".\"PRIMARY_KEY_6\"\x11\x04' !\nOCREATE UNIQUE INDEX \"PUBLIC\".\"\
+    CONSTRAINT_INDEX_6\" ON \"PUBLIC\".\"COMPANY\"(\"NAME\")\x11\x04( %\nyALTER TABLE\
+    \ \"PUBLIC\".\"COMPANY\" ADD CONSTRAINT \"PUBLIC\".\"CONSTRAINT_63\" UNIQUE(\"\
+    NAME\") INDEX \"PUBLIC\".\"CONSTRAINT_INDEX_6\"\0\0\0E\x04�#\x03\0\x11\x02SAnother\
+    \ company2\x11\x02TOne more company3\x11\x02QSuper company1\0\0\0\0\0\0\x05�\x01\
+    W\0\e\0\bchunk.13\bchunk.14\bchunk.15\bchunk.16\bchunk.17\bchunk.18\x05map.1\x06\
+    map.22\x06map.23\x06map.24\x06map.25\x05map.3\x05map.4\x05map.5\x05map.6\fname.index.7\f\
+    name.lobData\vname.lobMap\vname.lobRef\x15name.openTransactions\fname.table.0\f\
+    name.table.5\x0ename.undoLog.1\x0ename.undoLog.2\aroot.22\aroot.23\x06root.3�\x01\
+    chunk:13,block:2,len:1,liveMax:0,livePages:0,map:1a,max:700,next:3,pages:2,root:4c0000112d2,time:92,unused:a2,unusedAtVersion:15,version:13,pinCount:0�\
+    \x01chunk:14,block:5,len:1,liveMax:0,livePages:0,map:1a,max:400,pages:1,root:50000002dd4,time:92,unused:a2,unusedAtVersion:14,version:14,pinCount:0�\
+    \x01chunk:15,block:3,len:1,liveMax:0,livePages:0,map:1a,max:300,next:4,pages:1,root:54000002dd2,time:a2,unused:a2,unusedAtVersion:15,version:15,pinCount:0�\
+    \x01chunk:16,block:4,len:1,liveMax:0,livePages:0,map:1a,max:800,next:6,pages:2,root:580000112d4,time:a2,unused:a2,unusedAtVersion:16,version:16,pinCount:0�\
+    \x01chunk:17,block:6,len:1,liveMax:0,livePages:0,map:1c,max:4c0,next:7,pages:2,root:5c000005b54,time:a2,unused:b2,unusedAtVersion:17,version:17,pinCount:0�\
+    \x01chunk:18,block:7,len:1,liveMax:0,livePages:0,map:23,max:a00,next:8,pages:2,root:600000112d6,time:b2,unused:199,unusedAtVersion:18,version:18,pinCount:0\x15\
+    name:openTransactions\x1dname:table.5,createVersion:17\x1dname:index.7,createVersion:17\x1f\
+    name:undoLog.1,createVersion:18\x1fname:undoLog.2,createVersion:18\fname:table.0\v\
+    name:lobMap\vname:lobRef\fname:lobData\x0223\x016\x014\x015\x011\x013\x0222\x02\
+    24\x0225\v64000002e06\v64000012446\v64000003f54\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+    \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0chunk:19,block:8,version:19,fletcher:987d93b1\
+    \                                                                            \
+    \      \n"
+  learner_created: true
+- name: src/carsharing/Company.java
+  visible: true
+  text: |
+    package carsharing;
+
+    public class Company {
+        private String name;
+
+        Company(String name) {
+            this.name = name;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+    }
+  learner_created: true
+- name: src/carsharing/CompanyController.java
+  visible: true
+  text: |
+    package carsharing;
+
+    import carsharing.dao.CompanyDao;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class CompanyController implements CompanyDao {
+
+        static List<Company> companies = new ArrayList<>();
+
+        @Override
+        public List<Company> getCompanies() {
+            return companies;
+        }
+
+        @Override
+        public void updateCompany(Company company) {
+
+        }
+
+        @Override
+        public void deleteCompany(Company company) {
+
+        }
+
+        public static void addCompany(Company company) {
+            companies.add(company);
+            System.out.println("The company was created!");
+        }
+
+        public static void print_companies() {
+            if (companies.isEmpty())
+                System.out.println("The company list is empty!");
+            else {
+            int current = 1;
+            for(Company company: companies) {
+                System.out.println(current + ". " + company.getName());
+                current += 1; }
+            }
+
+        }
+    }
+  learner_created: true
+- name: src/carsharing/dao/CompanyDao.java
+  visible: true
+  text: |
+    package carsharing.dao;
+
+    import carsharing.Company;
+    import java.util.List;
+
+    public interface CompanyDao {
+        public List<Company> getCompanies();
+        public void updateCompany(Company company);
+        public void deleteCompany(Company company);
+    }
+  learner_created: true
+- name: src/carsharing/db/carsharing.trace.db
+  visible: true
+  text: "2022-03-23 15:37:26 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Syntax error in SQL statement \"ALTER TABLE COMPANY MODIFY[*] ID INT PRIMARY_KEY\
+    \ AUTO_INCREMENTMODIFY NAME VARCHAR(255) UNIQUE NOT NULL\"; expected \"., ADD,\
+    \ SET, RENAME, DROP, ALTER\"; SQL statement:\nALTER TABLE company MODIFY id INT\
+    \ PRIMARY_KEY AUTO_INCREMENTMODIFY name VARCHAR(255) UNIQUE NOT NULL [42001-200]\n\
+    2022-03-23 15:37:26 jdbc[4]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Syntax error in SQL statement \"ALTER TABLE COMPANY MODIFY[*] ID INT PRIMARY_KEY\
+    \ AUTO_INCREMENTMODIFY NAME VARCHAR(255) UNIQUE NOT NULL\"; expected \"., ADD,\
+    \ SET, RENAME, DROP, ALTER\"; SQL statement:\nALTER TABLE company MODIFY id INT\
+    \ PRIMARY_KEY AUTO_INCREMENTMODIFY name VARCHAR(255) UNIQUE NOT NULL [42001-200]\n\
+    2022-03-23 15:38:01 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Syntax error in SQL statement \"ALTER TABLE COMPANY MODIFY[*] ID INT PRIMARY_KEY\
+    \ AUTO_INCREMENTMODIFY NAME VARCHAR(255) UNIQUE NOT NULL\"; expected \"., ADD,\
+    \ SET, RENAME, DROP, ALTER\"; SQL statement:\nALTER TABLE company MODIFY id INT\
+    \ PRIMARY_KEY AUTO_INCREMENTMODIFY name VARCHAR(255) UNIQUE NOT NULL [42001-200]\n\
+    2022-03-23 15:38:01 jdbc[5]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Syntax error in SQL statement \"ALTER TABLE COMPANY MODIFY[*] ID INT PRIMARY_KEY\
+    \ AUTO_INCREMENTMODIFY NAME VARCHAR(255) UNIQUE NOT NULL\"; expected \"., ADD,\
+    \ SET, RENAME, DROP, ALTER\"; SQL statement:\nALTER TABLE company MODIFY id INT\
+    \ PRIMARY_KEY AUTO_INCREMENTMODIFY name VARCHAR(255) UNIQUE NOT NULL [42001-200]\n\
+    2022-03-23 15:38:01 jdbc[7]: null\norg.h2.message.DbException: The connection\
+    \ was not closed by the application and is garbage collected [90018-200]\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.jdbc.JdbcConnection.closeOld(JdbcConnection.java:245)\n\
+    \tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:186)\n\tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:152)\n\
+    \tat org.h2.Driver.connect(Driver.java:69)\n\tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:681)\n\
+    \tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:252)\n\t\
+    at DatabaseUtil.getConnection(DatabaseUtil.java:16)\n\tat DatabaseUtil.executeQuery(DatabaseUtil.java:36)\n\
+    \tat DatabaseUtil.ifTableExist(DatabaseUtil.java:46)\n\tat CarSharingTest.test4_checkIfTableExists(CarSharingTest.java:100)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.common.ReflectionUtils.invokeMethod(ReflectionUtils.java:87)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting.lambda$null$1(DynamicTesting.java:284)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting$1DynamicTestElement.lambda$null$0(DynamicTesting.java:252)\n\
+    \tat org.hyperskill.hstest.testing.runner.AsyncMainMethodRunner.lambda$runMain$0(AsyncMainMethodRunner.java:33)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\nCaused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException:\
+    \ The connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:622)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t...\
+    \ 25 more\n2022-03-23 15:38:01 jdbc[7]: null\norg.h2.message.DbException: The\
+    \ connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.jdbc.JdbcConnection.closeOld(JdbcConnection.java:245)\n\
+    \tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:186)\n\tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:152)\n\
+    \tat org.h2.Driver.connect(Driver.java:69)\n\tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:681)\n\
+    \tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:252)\n\t\
+    at DatabaseUtil.getConnection(DatabaseUtil.java:16)\n\tat DatabaseUtil.executeQuery(DatabaseUtil.java:36)\n\
+    \tat DatabaseUtil.ifTableExist(DatabaseUtil.java:46)\n\tat CarSharingTest.test4_checkIfTableExists(CarSharingTest.java:100)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.common.ReflectionUtils.invokeMethod(ReflectionUtils.java:87)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting.lambda$null$1(DynamicTesting.java:284)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting$1DynamicTestElement.lambda$null$0(DynamicTesting.java:252)\n\
+    \tat org.hyperskill.hstest.testing.runner.AsyncMainMethodRunner.lambda$runMain$0(AsyncMainMethodRunner.java:33)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\nCaused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException:\
+    \ The connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:622)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t...\
+    \ 25 more\n2022-03-23 15:38:01 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Syntax error in SQL statement \"ALTER TABLE COMPANY MODIFY[*] ID INT PRIMARY_KEY\
+    \ AUTO_INCREMENTMODIFY NAME VARCHAR(255) UNIQUE NOT NULL\"; expected \"., ADD,\
+    \ SET, RENAME, DROP, ALTER\"; SQL statement:\nALTER TABLE company MODIFY id INT\
+    \ PRIMARY_KEY AUTO_INCREMENTMODIFY name VARCHAR(255) UNIQUE NOT NULL [42001-200]\n\
+    2022-03-23 15:58:24 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Syntax error in SQL statement \"ALTER TABLE COMPANY ADD PRIMARY KEY (ID)ALTER[*]\
+    \ TABLE COMPANY ADD AUTO_INCREMENT (ID)ALTER TABLE COMPANY ADD UNIQUE (NAME)ALTER\
+    \ TABLE COMPANY MODIFY NAME VARCHAR(255) NOT NULL\"; SQL statement:\nALTER TABLE\
+    \ company ADD PRIMARY KEY (id)ALTER TABLE company ADD AUTO_INCREMENT (id)ALTER\
+    \ TABLE company ADD UNIQUE (name)ALTER TABLE company MODIFY name VARCHAR(255)\
+    \ NOT NULL [42000-200]\n2022-03-23 15:58:24 jdbc[5]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Syntax error in SQL statement \"ALTER TABLE COMPANY ADD PRIMARY KEY (ID)ALTER[*]\
+    \ TABLE COMPANY ADD AUTO_INCREMENT (ID)ALTER TABLE COMPANY ADD UNIQUE (NAME)ALTER\
+    \ TABLE COMPANY MODIFY NAME VARCHAR(255) NOT NULL\"; SQL statement:\nALTER TABLE\
+    \ company ADD PRIMARY KEY (id)ALTER TABLE company ADD AUTO_INCREMENT (id)ALTER\
+    \ TABLE company ADD UNIQUE (name)ALTER TABLE company MODIFY name VARCHAR(255)\
+    \ NOT NULL [42000-200]\n2022-03-23 15:59:24 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Attempt to define a second primary key; SQL statement:\nALTER TABLE company\
+    \ ADD PRIMARY KEY (id); [90017-200]\n\tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t\
+    at org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:129)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 15:59:24 jdbc[5]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Attempt to define a second\
+    \ primary key; SQL statement:\nALTER TABLE company ADD PRIMARY KEY (id); [90017-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:129)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:00:31 jdbc[3]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Column \"ID\" must not be\
+    \ nullable; SQL statement:\nALTER TABLE company ADD PRIMARY KEY (id); [90023-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.mvstore.db.MVTable.addIndex(MVTable.java:334)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:151)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:00:31 jdbc[5]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Column \"ID\" must not be\
+    \ nullable; SQL statement:\nALTER TABLE company ADD PRIMARY KEY (id); [90023-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.mvstore.db.MVTable.addIndex(MVTable.java:334)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:151)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:01:57 jdbc[3]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Column \"ID\" must not be\
+    \ nullable; SQL statement:\nALTER TABLE company ADD PRIMARY KEY (ID); [90023-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.mvstore.db.MVTable.addIndex(MVTable.java:334)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:151)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:01:57 jdbc[5]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Column \"ID\" must not be\
+    \ nullable; SQL statement:\nALTER TABLE company ADD PRIMARY KEY (ID); [90023-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.mvstore.db.MVTable.addIndex(MVTable.java:334)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:151)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:03:45 jdbc[3]:\
+    \ exception\norg.h2.jdbc.JdbcSQLNonTransientException: Unknown data type: ; SQL\
+    \ statement:\nALTER TABLE COMPANY ADD AUTO_INCREMENT (ID);ALTER TABLE COMPANY\
+    \ ADD UNIQUE (NAME);ALTER TABLE COMPANY MODIFY name VARCHAR(NAME) NOT NULL; [50004-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:505)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.command.Parser.parseColumnWithType(Parser.java:5971)\n\tat org.h2.command.Parser.parseColumnForTable(Parser.java:5697)\n\
+    \tat org.h2.command.Parser.parseTableColumnDefinition(Parser.java:8442)\n\tat\
+    \ org.h2.command.Parser.parseAlterTableAddColumn(Parser.java:8133)\n\tat org.h2.command.Parser.parseAlterTable(Parser.java:7690)\n\
+    \tat org.h2.command.Parser.parseAlter(Parser.java:6983)\n\tat org.h2.command.Parser.parsePrepared(Parser.java:887)\n\
+    \tat org.h2.command.Parser.parse(Parser.java:843)\n\tat org.h2.command.Parser.parse(Parser.java:815)\n\
+    \tat org.h2.command.Parser.prepareCommand(Parser.java:738)\n\tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\
+    \tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:164)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:03:45 jdbc[5]:\
+    \ exception\norg.h2.jdbc.JdbcSQLNonTransientException: Unknown data type: ; SQL\
+    \ statement:\nALTER TABLE COMPANY ADD AUTO_INCREMENT (ID);ALTER TABLE COMPANY\
+    \ ADD UNIQUE (NAME);ALTER TABLE COMPANY MODIFY name VARCHAR(NAME) NOT NULL; [50004-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:505)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.command.Parser.parseColumnWithType(Parser.java:5971)\n\tat org.h2.command.Parser.parseColumnForTable(Parser.java:5697)\n\
+    \tat org.h2.command.Parser.parseTableColumnDefinition(Parser.java:8442)\n\tat\
+    \ org.h2.command.Parser.parseAlterTableAddColumn(Parser.java:8133)\n\tat org.h2.command.Parser.parseAlterTable(Parser.java:7690)\n\
+    \tat org.h2.command.Parser.parseAlter(Parser.java:6983)\n\tat org.h2.command.Parser.parsePrepared(Parser.java:887)\n\
+    \tat org.h2.command.Parser.parse(Parser.java:843)\n\tat org.h2.command.Parser.parse(Parser.java:815)\n\
+    \tat org.h2.command.Parser.prepareCommand(Parser.java:738)\n\tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\
+    \tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:164)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:03:45 jdbc[7]:\
+    \ null\norg.h2.message.DbException: The connection was not closed by the application\
+    \ and is garbage collected [90018-200]\n\tat org.h2.message.DbException.get(DbException.java:205)\n\
+    \tat org.h2.message.DbException.get(DbException.java:181)\n\tat org.h2.message.DbException.get(DbException.java:170)\n\
+    \tat org.h2.jdbc.JdbcConnection.closeOld(JdbcConnection.java:245)\n\tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:186)\n\
+    \tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:152)\n\tat org.h2.Driver.connect(Driver.java:69)\n\
+    \tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:681)\n\t\
+    at java.sql/java.sql.DriverManager.getConnection(DriverManager.java:252)\n\tat\
+    \ DatabaseUtil.getConnection(DatabaseUtil.java:16)\n\tat DatabaseUtil.executeQuery(DatabaseUtil.java:36)\n\
+    \tat DatabaseUtil.ifTableExist(DatabaseUtil.java:46)\n\tat CarSharingTest.test4_checkIfTableExists(CarSharingTest.java:100)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.common.ReflectionUtils.invokeMethod(ReflectionUtils.java:87)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting.lambda$null$1(DynamicTesting.java:284)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting$1DynamicTestElement.lambda$null$0(DynamicTesting.java:252)\n\
+    \tat org.hyperskill.hstest.testing.runner.AsyncMainMethodRunner.lambda$runMain$0(AsyncMainMethodRunner.java:33)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\nCaused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException:\
+    \ The connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:622)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t...\
+    \ 25 more\n2022-03-23 16:03:45 jdbc[7]: null\norg.h2.message.DbException: The\
+    \ connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.jdbc.JdbcConnection.closeOld(JdbcConnection.java:245)\n\
+    \tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:186)\n\tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:152)\n\
+    \tat org.h2.Driver.connect(Driver.java:69)\n\tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:681)\n\
+    \tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:252)\n\t\
+    at DatabaseUtil.getConnection(DatabaseUtil.java:16)\n\tat DatabaseUtil.executeQuery(DatabaseUtil.java:36)\n\
+    \tat DatabaseUtil.ifTableExist(DatabaseUtil.java:46)\n\tat CarSharingTest.test4_checkIfTableExists(CarSharingTest.java:100)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.common.ReflectionUtils.invokeMethod(ReflectionUtils.java:87)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting.lambda$null$1(DynamicTesting.java:284)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting$1DynamicTestElement.lambda$null$0(DynamicTesting.java:252)\n\
+    \tat org.hyperskill.hstest.testing.runner.AsyncMainMethodRunner.lambda$runMain$0(AsyncMainMethodRunner.java:33)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\nCaused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException:\
+    \ The connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:622)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t...\
+    \ 25 more\n2022-03-23 16:04:26 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLNonTransientException:\
+    \ Unknown data type: ; SQL statement:\nALTER TABLE COMPANY ADD AUTO_INCREMENT\
+    \ (ID);ALTER TABLE COMPANY ADD UNIQUE (NAME);ALTER TABLE COMPANY MODIFY name VARCHAR(NAME)\
+    \ NOT NULL; [50004-200]\n\tat org.h2.message.DbException.getJdbcSQLException(DbException.java:505)\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t\
+    at org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.command.Parser.parseColumnWithType(Parser.java:5971)\n\tat org.h2.command.Parser.parseColumnForTable(Parser.java:5697)\n\
+    \tat org.h2.command.Parser.parseTableColumnDefinition(Parser.java:8442)\n\tat\
+    \ org.h2.command.Parser.parseAlterTableAddColumn(Parser.java:8133)\n\tat org.h2.command.Parser.parseAlterTable(Parser.java:7690)\n\
+    \tat org.h2.command.Parser.parseAlter(Parser.java:6983)\n\tat org.h2.command.Parser.parsePrepared(Parser.java:887)\n\
+    \tat org.h2.command.Parser.parse(Parser.java:843)\n\tat org.h2.command.Parser.parse(Parser.java:815)\n\
+    \tat org.h2.command.Parser.prepareCommand(Parser.java:738)\n\tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\
+    \tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:164)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:04:26 jdbc[5]:\
+    \ exception\norg.h2.jdbc.JdbcSQLNonTransientException: Unknown data type: ; SQL\
+    \ statement:\nALTER TABLE COMPANY ADD AUTO_INCREMENT (ID);ALTER TABLE COMPANY\
+    \ ADD UNIQUE (NAME);ALTER TABLE COMPANY MODIFY name VARCHAR(NAME) NOT NULL; [50004-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:505)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.command.Parser.parseColumnWithType(Parser.java:5971)\n\tat org.h2.command.Parser.parseColumnForTable(Parser.java:5697)\n\
+    \tat org.h2.command.Parser.parseTableColumnDefinition(Parser.java:8442)\n\tat\
+    \ org.h2.command.Parser.parseAlterTableAddColumn(Parser.java:8133)\n\tat org.h2.command.Parser.parseAlterTable(Parser.java:7690)\n\
+    \tat org.h2.command.Parser.parseAlter(Parser.java:6983)\n\tat org.h2.command.Parser.parsePrepared(Parser.java:887)\n\
+    \tat org.h2.command.Parser.parse(Parser.java:843)\n\tat org.h2.command.Parser.parse(Parser.java:815)\n\
+    \tat org.h2.command.Parser.prepareCommand(Parser.java:738)\n\tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\
+    \tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:164)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 16:04:26 jdbc[6]:\
+    \ null\norg.h2.message.DbException: The connection was not closed by the application\
+    \ and is garbage collected [90018-200]\n\tat org.h2.message.DbException.get(DbException.java:205)\n\
+    \tat org.h2.message.DbException.get(DbException.java:181)\n\tat org.h2.message.DbException.get(DbException.java:170)\n\
+    \tat org.h2.jdbc.JdbcConnection.closeOld(JdbcConnection.java:245)\n\tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:186)\n\
+    \tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:152)\n\tat org.h2.Driver.connect(Driver.java:69)\n\
+    \tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:681)\n\t\
+    at java.sql/java.sql.DriverManager.getConnection(DriverManager.java:252)\n\tat\
+    \ DatabaseUtil.getConnection(DatabaseUtil.java:16)\n\tat CarSharingTest.test3_checkDatabaseConnection(CarSharingTest.java:94)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.common.ReflectionUtils.invokeMethod(ReflectionUtils.java:87)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting.lambda$null$1(DynamicTesting.java:284)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting$1DynamicTestElement.lambda$null$0(DynamicTesting.java:252)\n\
+    \tat org.hyperskill.hstest.testing.runner.AsyncMainMethodRunner.lambda$runMain$0(AsyncMainMethodRunner.java:33)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\nCaused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException:\
+    \ The connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:622)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t...\
+    \ 23 more\n2022-03-23 16:04:26 jdbc[6]: null\norg.h2.message.DbException: The\
+    \ connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.jdbc.JdbcConnection.closeOld(JdbcConnection.java:245)\n\
+    \tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:186)\n\tat org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:152)\n\
+    \tat org.h2.Driver.connect(Driver.java:69)\n\tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:681)\n\
+    \tat java.sql/java.sql.DriverManager.getConnection(DriverManager.java:252)\n\t\
+    at DatabaseUtil.getConnection(DatabaseUtil.java:16)\n\tat CarSharingTest.test3_checkDatabaseConnection(CarSharingTest.java:94)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\
+    \tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.common.ReflectionUtils.invokeMethod(ReflectionUtils.java:87)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting.lambda$null$1(DynamicTesting.java:284)\n\
+    \tat org.hyperskill.hstest.dynamic.input.DynamicTesting$1DynamicTestElement.lambda$null$0(DynamicTesting.java:252)\n\
+    \tat org.hyperskill.hstest.testing.runner.AsyncMainMethodRunner.lambda$runMain$0(AsyncMainMethodRunner.java:33)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\nCaused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException:\
+    \ The connection was not closed by the application and is garbage collected [90018-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:622)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t...\
+    \ 23 more\n2022-03-23 16:04:26 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLNonTransientException:\
+    \ Unknown data type: ; SQL statement:\nALTER TABLE COMPANY ADD AUTO_INCREMENT\
+    \ (ID);ALTER TABLE COMPANY ADD UNIQUE (NAME);ALTER TABLE COMPANY MODIFY name VARCHAR(NAME)\
+    \ NOT NULL; [50004-200]\n\tat org.h2.message.DbException.getJdbcSQLException(DbException.java:505)\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t\
+    at org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.command.Parser.parseColumnWithType(Parser.java:5971)\n\tat org.h2.command.Parser.parseColumnForTable(Parser.java:5697)\n\
+    \tat org.h2.command.Parser.parseTableColumnDefinition(Parser.java:8442)\n\tat\
+    \ org.h2.command.Parser.parseAlterTableAddColumn(Parser.java:8133)\n\tat org.h2.command.Parser.parseAlterTable(Parser.java:7690)\n\
+    \tat org.h2.command.Parser.parseAlter(Parser.java:6983)\n\tat org.h2.command.Parser.parsePrepared(Parser.java:887)\n\
+    \tat org.h2.command.Parser.parse(Parser.java:843)\n\tat org.h2.command.Parser.parse(Parser.java:815)\n\
+    \tat org.h2.command.Parser.prepareCommand(Parser.java:738)\n\tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\
+    \tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:164)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 21:04:12 jdbc[3]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Attempt to define a second\
+    \ primary key; SQL statement:\nALTER TABLE COMPANY ADD PRIMARY KEY (id); [90017-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:129)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.CommandList.executeRemaining(CommandList.java:59)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:67)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-23 21:04:12 jdbc[5]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Attempt to define a second\
+    \ primary key; SQL statement:\nALTER TABLE COMPANY ADD PRIMARY KEY (id); [90017-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:576)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.message.DbException.get(DbException.java:170)\n\tat org.h2.command.ddl.AlterTableAddConstraint.tryUpdate(AlterTableAddConstraint.java:129)\n\
+    \tat org.h2.command.ddl.AlterTableAddConstraint.update(AlterTableAddConstraint.java:78)\n\
+    \tat org.h2.command.CommandContainer.update(CommandContainer.java:198)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:66)\n\tat org.h2.command.CommandList.executeRemaining(CommandList.java:59)\n\
+    \tat org.h2.command.CommandList.update(CommandList.java:67)\n\tat org.h2.command.Command.executeUpdate(Command.java:251)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:168)\n\
+    \tat org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setUpdateCompany(H2Connection.java:92)\n\
+    \tat carsharing.Main.main(Main.java:19)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native\
+    \ Method)\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\n\
+    \tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\n\
+    \tat java.base/java.lang.reflect.Method.invoke(Method.java:568)\n\tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.invokeMain(MainMethodExecutor.java:172)\n\
+    \tat org.hyperskill.hstest.testing.execution.MainMethodExecutor.lambda$launch$0(MainMethodExecutor.java:199)\n\
+    \tat java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539)\n\
+    \tat java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)\n\tat\
+    \ java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)\n\
+    \tat java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)\n\
+    \tat java.base/java.lang.Thread.run(Thread.java:833)\n2022-03-25 15:01:46 jdbc[3]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement\
+    \ \"INSERT INTO COMPANY NAME[*] VALUES MEDTRONIC\"; expected \"., (, DIRECT, SORTED,\
+    \ DEFAULT, VALUES, SET, (, WITH, SELECT, TABLE, VALUES\"; SQL statement:\nINSERT\
+    \ INTO COMPANY name VALUES Medtronic [42001-200]\n2022-03-25 15:14:19 jdbc[3]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement\
+    \ \"INSERT INTO COMPANY NAME[*] VALUES MEDTRONIC\"; expected \"., (, DIRECT, SORTED,\
+    \ DEFAULT, VALUES, SET, (, WITH, SELECT, TABLE, VALUES\"; SQL statement:\nINSERT\
+    \ INTO COMPANY name VALUES Medtronic [42001-200]\n2022-03-25 15:15:50 jdbc[3]:\
+    \ exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement\
+    \ \"INSERT INTO ([*]COMPANY) NAME VALUES (MDT)\"; expected \"identifier\"; SQL\
+    \ statement:\nINSERT INTO (COMPANY) name VALUES (MDT) [42001-200]\n2022-03-25\
+    \ 15:16:38 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax\
+    \ error in SQL statement \"INSERT INTO COMPANY NAME[*] VALUES (MDT)\"; expected\
+    \ \"., (, DIRECT, SORTED, DEFAULT, VALUES, SET, (, WITH, SELECT, TABLE, VALUES\"\
+    ; SQL statement:\nINSERT INTO COMPANY name VALUES (MDT) [42001-200]\n2022-03-25\
+    \ 15:17:16 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException: Column\
+    \ \"MDT\" not found; SQL statement:\nINSERT INTO COMPANY (name) VALUES (MDT) [42122-200]\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:453)\n\t\
+    at org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\tat\
+    \ org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.expression.ExpressionColumn.getColumnException(ExpressionColumn.java:163)\n\
+    \tat org.h2.expression.ExpressionColumn.optimize(ExpressionColumn.java:145)\n\t\
+    at org.h2.command.dml.Insert.prepare(Insert.java:327)\n\tat org.h2.command.Parser.prepareCommand(Parser.java:744)\n\
+    \tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\
+    \tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\tat\
+    \ org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:164)\n\t\
+    at org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setInsertCompany(H2Connection.java:107)\n\
+    \tat carsharing.Main.logInAsManager(Main.java:49)\n\tat carsharing.Main.main(Main.java:27)\n\
+    2022-03-25 15:17:48 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Column \"MDT\" not found; SQL statement:\nINSERT INTO COMPANY (name) VALUES\
+    \ MDT [42122-200]\n\tat org.h2.message.DbException.getJdbcSQLException(DbException.java:453)\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t\
+    at org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.expression.ExpressionColumn.getColumnException(ExpressionColumn.java:163)\n\
+    \tat org.h2.expression.ExpressionColumn.optimize(ExpressionColumn.java:145)\n\t\
+    at org.h2.command.dml.Insert.prepare(Insert.java:327)\n\tat org.h2.command.Parser.prepareCommand(Parser.java:744)\n\
+    \tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\
+    \tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\tat\
+    \ org.h2.jdbc.JdbcStatement.executeUpdateInternal(JdbcStatement.java:164)\n\t\
+    at org.h2.jdbc.JdbcStatement.executeUpdate(JdbcStatement.java:126)\n\tat carsharing.H2Connection.setInsertCompany(H2Connection.java:107)\n\
+    \tat carsharing.Main.logInAsManager(Main.java:49)\n\tat carsharing.Main.main(Main.java:27)\n\
+    2022-03-25 15:19:21 jdbc[3]: exception\norg.h2.jdbc.JdbcSQLSyntaxErrorException:\
+    \ Column \"MDT\" not found; SQL statement:\nINSERT INTO COMPANY (name) VALUES\
+    \ MDT [42122-200]\n\tat org.h2.message.DbException.getJdbcSQLException(DbException.java:453)\n\
+    \tat org.h2.message.DbException.getJdbcSQLException(DbException.java:429)\n\t\
+    at org.h2.message.DbException.get(DbException.java:205)\n\tat org.h2.message.DbException.get(DbException.java:181)\n\
+    \tat org.h2.expression.ExpressionColumn.getColumnException(ExpressionColumn.java:163)\n\
+    \tat org.h2.expression.ExpressionColumn.optimize(ExpressionColumn.java:145)\n\t\
+    at org.h2.command.dml.Insert.prepare(Insert.java:327)\n\tat org.h2.command.Parser.prepareCommand(Parser.java:744)\n\
+    \tat org.h2.engine.Session.prepareLocal(Session.java:657)\n\tat org.h2.engine.Session.prepareCommand(Session.java:595)\n\
+    \tat org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1235)\n\tat\
+    \ org.h2.jdbc.JdbcPreparedStatement.<init>(JdbcPreparedStatement.java:76)\n\t\
+    at org.h2.jdbc.JdbcConnection.prepareStatement(JdbcConnection.java:352)\n\tat\
+    \ carsharing.H2Connection.setInsertCompany(H2Connection.java:103)\n\tat carsharing.Main.logInAsManager(Main.java:49)\n\
+    \tat carsharing.Main.main(Main.java:27)\n"
+  learner_created: true
+- name: src/carsharing/H2Connection.java
+  visible: true
+  text: "package carsharing;\n\nimport java.sql.*;\n\npublic class H2Connection {\n\
+    \    \n    private static final String jdbc_driver = \"org.h2.Driver\";\n    private\
+    \ final static String dbLocation = \"\\\\C:\\\\Users\\\\marang3\\\\IdeaProjects\\\
+    \\Car Sharing\\\\Car Sharing\\\\task\\\\src\\\\carsharing\\\\db\\\\\";\n    private\
+    \ final static String dbUrl = \"jdbc:h2:\" + dbLocation + \"%s\";\n    private\
+    \ final static String companyTableName = \"COMPANY\";\n    private static String\
+    \ dbname = \"\";\n\n    final private static String CREATE_COMPANY =\n       \
+    \     \"CREATE TABLE IF NOT EXISTS %s \" +\n                    \"(ID INT, \"\
+    \ +\n                    \" NAME VARCHAR(255)\" +\n                    \")\";\n\
+    \n    final private static String DROP_IF_EXISTS =\n            \"DROP TABLE IF\
+    \ EXISTS %s;\";\n\n    final private static String ALTER_COMPANY =\n         \
+    \   \"ALTER TABLE COMPANY \" + \"ALTER COLUMN NAME VARCHAR(255) NOT NULL;\" +\n\
+    \            \"ALTER TABLE COMPANY \" + \"ALTER COLUMN ID {INT NOT NULL AUTO_INCREMENT};\"\
+    \ +\n            \"ALTER TABLE COMPANY \" + \"ADD PRIMARY KEY (ID);\" +\n    \
+    \        \"ALTER TABLE COMPANY \" + \"ADD UNIQUE (NAME);\";\n\n    final private\
+    \ static String INSERT_COMPANY =\n            \"INSERT INTO COMPANY (name) VALUES\
+    \ (?)\";\n\n    public static void setDbName(String dbname) {\n        H2Connection.dbname\
+    \ = dbname;\n    }\n\n    /**\n     * @return statement to create company table\n\
+    \     */\n    private static String getCreateCompany() {\n        return String.format(CREATE_COMPANY,\
+    \ companyTableName);\n    }\n\n    /**\n     * Builds query: 'Drop if exists [tableName]'\n\
+    \     */\n    static String dropTableIfExists() {\n        return String.format(DROP_IF_EXISTS,\
+    \ H2Connection.companyTableName);\n    }\n\n    /**\n     * @return query to alter\
+    \ table company\n     */\n    private static String alterTable() {\n        return\
+    \ ALTER_COMPANY;\n    }\n\n\n    public static void setCreateCompany() {\n   \
+    \     try {\n            Class.forName(jdbc_driver);\n\n            Connection\
+    \ connection = DriverManager.getConnection(String.format(dbUrl, dbname));\n  \
+    \          connection.setAutoCommit(true);\n            Statement statement =\
+    \ connection.createStatement();\n            statement.executeUpdate(dropTableIfExists());\
+    \ //Delete company table\n            statement.executeUpdate(getCreateCompany());\
+    \ //Create company table\n            statement.close();\n            connection.close();\n\
+    \        } catch (SQLException | ClassNotFoundException e) {\n            e.printStackTrace();\n\
+    \        }\n    }\n\n    public static void setUpdateCompany() {\n        try\
+    \ {\n            Class.forName(jdbc_driver);\n\n            Connection connection\
+    \ = DriverManager.getConnection(String.format(dbUrl, dbname));\n            connection.setAutoCommit(true);\n\
+    \            Statement statement = connection.createStatement();\n           \
+    \ statement.executeUpdate(alterTable());\n            statement.close();\n   \
+    \         connection.close();\n        } catch (SQLException | ClassNotFoundException\
+    \ e) {\n            e.printStackTrace();\n        }\n    }\n\n    public static\
+    \ void setInsertCompany(String company_name) {\n        try {\n            Class.forName(jdbc_driver);\n\
+    \n            Connection connection = DriverManager.getConnection(String.format(dbUrl,\
+    \ dbname));\n            connection.setAutoCommit(true);\n            PreparedStatement\
+    \ statement = connection.prepareStatement(INSERT_COMPANY);\n            statement.setString(1,\
+    \ company_name);\n            statement.executeUpdate();\n            Company\
+    \ company = new Company(company_name);\n            CompanyController.addCompany(company);\n\
+    \            statement.close();\n            connection.close();\n        } catch\
+    \ (SQLException | ClassNotFoundException e) {\n            e.printStackTrace();\n\
+    \        }\n    }\n\n\n\n}\n"
+  learner_created: true
+- name: src/carsharing/Car.java
+  visible: true
+  learner_created: true
+- name: src/carsharing/CarController.java
+  visible: true
+  learner_created: true
+- name: src/carsharing/dao/CarDao.java
+  visible: true
+  learner_created: true
+feedback_link: https://hyperskill.org/learn/step/11503#comment
+status: Solved
+feedback:
+  message: Congratulations!
+  time: Sun, 27 Mar 2022 15:24:17 UTC
+record: -1
